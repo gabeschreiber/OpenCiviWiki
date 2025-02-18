@@ -8,6 +8,8 @@ from django.contrib.auth.models import AbstractUser
 from django.core.files.storage import default_storage
 from django.core.files.uploadedfile import InMemoryUploadedFile
 from django.db import models
+from imagekit.models import ImageSpecField
+from imagekit.processors import ResizeToFill
 from PIL import Image, ImageOps
 from taggit.managers import TaggableManager
 
@@ -58,8 +60,18 @@ class Profile(models.Model):
     profile_image = models.ImageField(
         upload_to=PathAndRename("profile_uploads"), blank=True, null=True
     )
-    profile_image_thumb = models.ImageField(
-        upload_to=PathAndRename("profile_uploads"), blank=True, null=True
+
+    # Thumbnail generation happens based on profile_image file (happens automatically)
+    profile_image_thumb = ImageSpecField(
+        source="profile_image",
+        processors=[
+            ResizeToFill(
+                settings.PROFILE_IMG["THUMB_SIZE"][0],
+                settings.PROFILE_IMG["THUMB_SIZE"][1],
+            )
+        ],
+        format="JPEG",
+        options={"quality": 90},
     )
 
     def __str__(self):
@@ -104,19 +116,27 @@ class Profile(models.Model):
         if self.profile_image:
             self.resize_profile_image()
 
-        super(Profile, self).save(*args, **kwargs)
+        super().save(*args, **kwargs)
 
+    # ADDITIONS
     def resize_profile_image(self):
-        """
-        Resizes and crops the user uploaded image and creates a thumbnail version of it
-        """
+        # Changes
+        # Removed thumbnail creation and
+        # use resize_profile_image to ONLY resize the
+        # profile_image attribute
+        # This processes a newly uploaded image
+        # (convert to JPG, resize, change background)
+        # while allowing django-imagekit to handle
+        # thumbnail creation dynamically when needed
 
-        # TODO: try to remove this resize_profile_image method
-        # or find a more simple way to acheive the goal(s)
-        # - less disk space?
-        # - desired shape?
+        # What this does:
+        #   - Shortens resize_profile_image code
+        #   - Moves thumbnail handling to django-imagekit
+        #   - Removes the double usage of methods like ImageOps,
+        #     InMemoryUploadedFile, etc
 
         profile_image = Image.open(self.profile_image)
+
         # Resize image
         profile_image = ImageOps.fit(
             profile_image,
@@ -147,22 +167,65 @@ class Profile(models.Model):
             profile_image.tell(),
             None,
         )
-        # Make a Thumbnail Image for the new resized image
-        thumb_image = profile_image.copy()
 
-        thumb_image.thumbnail(
-            settings.PROFILE_IMG["THUMB_SIZE"],
-            resample=Image.ANTIALIAS,
-        )
-        tmp_thumb_file = io.BytesIO()
-        thumb_image.save(tmp_thumb_file, "JPEG", quality=90)
-        tmp_thumb_file.seek(0)
-
-        self.profile_image_thumb = InMemoryUploadedFile(
-            tmp_thumb_file,
-            "ImageField",
-            self.profile_image.name,
-            "image/jpeg",
-            thumb_image.tell(),
-            None,
-        )
+    # def resize_profile_image(self):
+    #     """
+    #     Resizes and crops the user uploaded
+    #     image and creates a thumbnail version of it
+    #     """
+    #
+    #     # TODO: try to remove this resize_profile_image method
+    #     # or find a more simple way to acheive the goal(s)
+    #     # - less disk space?
+    #     # - desired shape?
+    #
+    #     profile_image = Image.open(self.profile_image)
+    #     # Resize image
+    #     profile_image = ImageOps.fit(
+    #         profile_image,
+    #         settings.PROFILE_IMG["SIZE"],
+    #         Image.ANTIALIAS,
+    #         centering=(0.5, 0.5),
+    #     )
+    #
+    #     # Convert to JPG image format with white background
+    #     if profile_image.mode not in ("L", "RGB"):
+    #         white_bg_img = Image.new(
+    #             "RGB",
+    #             settings.PROFILE_IMG["SIZE"],
+    #             settings.PROFILE_IMG["WHITE_BG"],
+    #         )
+    #         white_bg_img.paste(profile_image, mask=profile_image.split()[3])
+    #         profile_image = white_bg_img
+    #
+    #     # Save new cropped image
+    #     tmp_image_file = io.BytesIO()
+    #     profile_image.save(tmp_image_file, "JPEG", quality=90)
+    #     tmp_image_file.seek(0)
+    #     self.profile_image = InMemoryUploadedFile(
+    #         tmp_image_file,
+    #         "ImageField",
+    #         self.profile_image.name,
+    #         "image/jpeg",
+    #         profile_image.tell(),
+    #         None,
+    #     )
+    #     # Make a Thumbnail Image for the new resized image
+    #     thumb_image = profile_image.copy()
+    #
+    #     thumb_image.thumbnail(
+    #         settings.PROFILE_IMG["THUMB_SIZE"],
+    #         resample=Image.ANTIALIAS,
+    #     )
+    #     tmp_thumb_file = io.BytesIO()
+    #     thumb_image.save(tmp_thumb_file, "JPEG", quality=90)
+    #     tmp_thumb_file.seek(0)
+    #
+    #     self.profile_image_thumb = InMemoryUploadedFile(
+    #         tmp_thumb_file,
+    #         "ImageField",
+    #         self.profile_image.name,
+    #         "image/jpeg",
+    #         thumb_image.tell(),
+    #         None,
+    #     )

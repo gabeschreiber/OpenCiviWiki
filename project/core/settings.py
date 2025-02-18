@@ -37,6 +37,7 @@ INSTALLED_APPS = (
     "notification",
     "debug_toolbar",
     "django_browser_reload",
+    "imagekit",
 )
 
 MIDDLEWARE = [
